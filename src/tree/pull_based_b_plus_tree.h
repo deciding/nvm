@@ -191,204 +191,204 @@ namespace tree {
             sched.run();
         }
 
-        static void *context_based_process(void* para) {
-            pull_based_b_plus_tree* tree = reinterpret_cast<pull_based_b_plus_tree*>(para);
-            tree->create_free_contexts();
-#ifndef __APPLE__
-            cpu_set_t mask;
-            CPU_ZERO(&mask);
-            CPU_SET(2, &mask);
-            pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask);
-#endif
-
-            int64_t t1 = ticks();
-
-            uint64_t admission_cycles = 0;
-            uint64_t blk_completion_cycles = 0;
-            uint64_t blk_ready_cycles = 0;
-            uint64_t manager_ready_cycles = 0;
-
-            uint64_t admission = 0, blk_completion = 0, blk_ready = 0, manager_ready = 0;
-
-            uint64_t loops = 0, last_loop = 0;
-
-            uint64_t empty_queue_time = 0;
-
-            std::vector<int> blk_processed;
-
-            std::vector<call_back_context*>& blk_ready_contexts = tree->blk_accessor_->get_ready_contexts();
-            std::vector<call_back_context*>& barrier_ready_contexts = tree->manager.get_ready_contexts();
-
-            ready_state_estimator &estimator = tree->blk_accessor_->get_ready_state_estimator();
-
-            int64_t last = 0;
-            uint64_t last_call_completion = 0;
-            uint64_t context_id_generator = 0;
-
-            uint64_t delay_start = 0;
-            uint64_t delay = 0;
-
-//            scheduler<K, V, CAPACITY> sche(this);
-
-            while (!tree->working_thread_terminate_flag_ || tree->pending_request_.load() > 0) {
-                loops++;
-//                usleep(1);
-                request<K, V>* request;
-                int64_t last = ticks();
-                int state;
-                uint64_t start;
-                int new_arrivals = 0;
-
-//                int probe_granularity = max(8, min(32, (tree->pending_request_.load() - 1) / 4 + 1));
-                int probe_granularity = 16;
-
-//                if (rand() % 10000 < 1)
-//                    printf("granularity = %d.\n", probe_granularity);
-                int processed = 0;
-                do {
-                    int32_t free = tree->free_context_slots_.load();
-//                    while (tree->free_context_slots_.load() > 0 && (request = tree->atomic_dequeue_request()) != nullptr) {
-//                while (free-- > 0 && (request = tree->atomic_dequeue_request()) != nullptr) {
-                    new_arrivals = 0;
-                    if (free-- && (request = tree->atomic_dequeue_request()) != nullptr) {
-
-
-//                    printf("admission: %.2f us, blk_com: %.2f us, blk_ready: %.2f us, manager_ready: %.2f us\n",
-//                           cycles_to_microseconds(admission_cycles),
-//                           cycles_to_microseconds(blk_completion_cycles),
-//                           cycles_to_microseconds(blk_ready_cycles),
-//                           cycles_to_microseconds(manager_ready_cycles));
-//                    printf("Count: adm: %d, blk_com: %d, blk_read: %d, manager: %d\n", admission, blk_completion, blk_ready, manager_ready);
-
-//                    admission_cycles = 0;
-//                    blk_completion_cycles = 0;
-//                    blk_ready_cycles = 0;
-//                    manager_ready_cycles = 0;
-//                    admission = 0, blk_completion = 0, blk_ready = 0, manager_ready = 0;
-
-                        request->admission = ticks();
-                        call_back_context *context;
-                        if (request->type == SEARCH_REQUEST) {
-                            context = tree->get_free_search_context();
-                            reinterpret_cast<search_context *>(context)->init(
-                                    reinterpret_cast<search_request<K, V> *>(request));
-                        } else {
-                            context = tree->get_free_insert_context();
-                            reinterpret_cast<insert_context *>(context)->init(
-                                    reinterpret_cast<insert_request<K, V> *>(request));
-                        }
-                        context->set_id(context_id_generator++);
-                        tree->free_context_slots_--;
-                        start = ticks();
-                        context->run();
-                        admission++;
-                        admission_cycles += ticks() - start;
-                        new_arrivals ++;
-                    }
-//                } while (tree->manager.process_ready_context(tree->queue_length_));
-//                process_ready_contexts(blk_ready_contexts, tree->queue_length_);
-//                process_ready_contexts(barrier_ready_contexts, tree->queue_length_);
-//                } while (process_ready_contexts(blk_ready_contexts, tree->queue_length_) || process_ready_contexts(barrier_ready_contexts, tree->queue_length_));
-                    processed = 0;
-                    start = ticks();
-                    processed += process_ready_contexts(blk_ready_contexts, probe_granularity);
-                    blk_ready++;
-                    blk_ready_cycles += ticks() - start;
-
-                    start = ticks();
-                    processed += process_ready_contexts(barrier_ready_contexts, probe_granularity);
-                    manager_ready++;
-                    manager_ready_cycles += ticks() - start;
-//                    printf("%d processed \n", processed);
-                } while (ticks() - delay_start < delay && (new_arrivals || processed));
-
-                int64_t current_tick = ticks();
-                bool timeout = false;
-                int64_t cycles_to_wait = INT64_MAX;
-                int64_t cycles_to_wait_for_write = INT64_MAX;
-                int estimated_write = 0;
-                const int64_t max_waiting_cycles = 100000;
-//                const int64_t max_waiting_cycles = 1000;
-                delay_start = ticks();
-                if ((timeout = ((current_tick - last_call_completion) > max_waiting_cycles))
-                    || (cycles_to_wait_for_write = max((int64_t)0, estimator.estimate_the_time_to_get_desirable_ready_write_state(1, current_tick) - current_tick)) == 0
-                    || (cycles_to_wait = max((int64_t) 0,
-                                             estimator.estimate_the_time_to_get_desirable_ready_state(probe_granularity, current_tick) - current_tick)) == 0) {
-                    start = ticks();
-                    const int processed = tree->blk_accessor_->process_completion(probe_granularity);
-                    if (timeout) {
-//                        printf("%d (e) vs %d (a) timeout (%f us)\n", probe_granularity, processed,
-//                               cycles_to_microseconds(current_tick - last_call_completion));
-//                        printf("pending: %d, pending_write: %d\n", estimator.get_number_of_pending_state(), estimator.get_number_of_pending_write_state());
-//                        printf("loops: %ld\n", loops - last_loop);
-                        last_loop = loops;
-                    } else if (cycles_to_wait_for_write == 0) {
-//                        printf("%d (e) vs %d (a) write\n", 1, processed);
-                    } else {
-//                        printf("%d (e) vs %d (a) REAL\n", probe_granularity, processed);
-                    }
-                    last_call_completion = ticks();
-                    blk_processed.push_back(processed);
-                    blk_completion++;
-                    blk_completion_cycles += ticks() - start;
-//                    printf("%d processed in blk_completion\n", processed);
-                }
-//                else if (blk_ready_contexts.empty() && barrier_ready_contexts.empty() && tree->request_queue_.empty()) {
-//                else if (estimator.get_number_of_pending_state() > tree->queue_length_ / 3 * 2) {
-//                    usleep(10);
-//                    std::this_thread::sleep_for(std::chrono::nanoseconds((int)cycles_to_nanoseconds(cycles_to_wait)));
-//                }
-
-                delay = min(max_waiting_cycles, min(cycles_to_wait_for_write, cycles_to_wait));
-
-//                printf("delay: %ld\n", delay);
-
+//        static void *context_based_process(void* para) {
+//            pull_based_b_plus_tree* tree = reinterpret_cast<pull_based_b_plus_tree*>(para);
+//            tree->create_free_contexts();
+//#ifndef __APPLE__
+//            cpu_set_t mask;
+//            CPU_ZERO(&mask);
+//            CPU_SET(2, &mask);
+//            pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask);
+//#endif
+//
+//            int64_t t1 = ticks();
+//
+//            uint64_t admission_cycles = 0;
+//            uint64_t blk_completion_cycles = 0;
+//            uint64_t blk_ready_cycles = 0;
+//            uint64_t manager_ready_cycles = 0;
+//
+//            uint64_t admission = 0, blk_completion = 0, blk_ready = 0, manager_ready = 0;
+//
+//            uint64_t loops = 0, last_loop = 0;
+//
+//            uint64_t empty_queue_time = 0;
+//
+//            std::vector<int> blk_processed;
+//
+//            std::vector<call_back_context*>& blk_ready_contexts = tree->blk_accessor_->get_ready_contexts();
+//            std::vector<call_back_context*>& barrier_ready_contexts = tree->manager.get_ready_contexts();
+//
+//            ready_state_estimator &estimator = tree->blk_accessor_->get_ready_state_estimator();
+//
+//            int64_t last = 0;
+//            uint64_t last_call_completion = 0;
+//            uint64_t context_id_generator = 0;
+//
+//            uint64_t delay_start = 0;
+//            uint64_t delay = 0;
+//
+////            scheduler<K, V, CAPACITY> sche(this);
+//
+//            while (!tree->working_thread_terminate_flag_ || tree->pending_request_.load() > 0) {
+//                loops++;
+////                usleep(1);
+//                request<K, V>* request;
+//                int64_t last = ticks();
+//                int state;
+//                uint64_t start;
+//                int new_arrivals = 0;
+//
+////                int probe_granularity = max(8, min(32, (tree->pending_request_.load() - 1) / 4 + 1));
+//                int probe_granularity = 16;
+//
+////                if (rand() % 10000 < 1)
+////                    printf("granularity = %d.\n", probe_granularity);
 //                int processed = 0;
-                do {
-                    processed = 0;
-                    start = ticks();
-                    processed += process_ready_contexts(blk_ready_contexts, probe_granularity);
-                    blk_ready++;
-                    blk_ready_cycles += ticks() - start;
-
-                    start = ticks();
-                    processed += process_ready_contexts(barrier_ready_contexts, probe_granularity);
-                    manager_ready++;
-                    manager_ready_cycles += ticks() - start;
-//                    printf("%d processed \n", processed);
-                } while (ticks() - delay_start < delay && processed > 0);
-
 //                do {
+//                    int32_t free = tree->free_context_slots_.load();
+////                    while (tree->free_context_slots_.load() > 0 && (request = tree->atomic_dequeue_request()) != nullptr) {
+////                while (free-- > 0 && (request = tree->atomic_dequeue_request()) != nullptr) {
+//                    new_arrivals = 0;
+//                    if (free-- && (request = tree->atomic_dequeue_request()) != nullptr) {
+//
+//
+////                    printf("admission: %.2f us, blk_com: %.2f us, blk_ready: %.2f us, manager_ready: %.2f us\n",
+////                           cycles_to_microseconds(admission_cycles),
+////                           cycles_to_microseconds(blk_completion_cycles),
+////                           cycles_to_microseconds(blk_ready_cycles),
+////                           cycles_to_microseconds(manager_ready_cycles));
+////                    printf("Count: adm: %d, blk_com: %d, blk_read: %d, manager: %d\n", admission, blk_completion, blk_ready, manager_ready);
+//
+////                    admission_cycles = 0;
+////                    blk_completion_cycles = 0;
+////                    blk_ready_cycles = 0;
+////                    manager_ready_cycles = 0;
+////                    admission = 0, blk_completion = 0, blk_ready = 0, manager_ready = 0;
+//
+//                        request->admission = ticks();
+//                        call_back_context *context;
+//                        if (request->type == SEARCH_REQUEST) {
+//                            context = tree->get_free_search_context();
+//                            reinterpret_cast<search_context *>(context)->init(
+//                                    reinterpret_cast<search_request<K, V> *>(request));
+//                        } else {
+//                            context = tree->get_free_insert_context();
+//                            reinterpret_cast<insert_context *>(context)->init(
+//                                    reinterpret_cast<insert_request<K, V> *>(request));
+//                        }
+//                        context->set_id(context_id_generator++);
+//                        tree->free_context_slots_--;
+//                        start = ticks();
+//                        context->run();
+//                        admission++;
+//                        admission_cycles += ticks() - start;
+//                        new_arrivals ++;
+//                    }
+////                } while (tree->manager.process_ready_context(tree->queue_length_));
+////                process_ready_contexts(blk_ready_contexts, tree->queue_length_);
+////                process_ready_contexts(barrier_ready_contexts, tree->queue_length_);
+////                } while (process_ready_contexts(blk_ready_contexts, tree->queue_length_) || process_ready_contexts(barrier_ready_contexts, tree->queue_length_));
+//                    processed = 0;
 //                    start = ticks();
-//                    process_ready_contexts(barrier_ready_contexts, 8);
+//                    processed += process_ready_contexts(blk_ready_contexts, probe_granularity);
+//                    blk_ready++;
+//                    blk_ready_cycles += ticks() - start;
+//
+//                    start = ticks();
+//                    processed += process_ready_contexts(barrier_ready_contexts, probe_granularity);
 //                    manager_ready++;
 //                    manager_ready_cycles += ticks() - start;
-//                } while (ticks() - delay_start < delay);
-
-            }
-            tree->destroy_free_contexts();
-
-            printf("loops: %ld\nblk_ready: %ld, blk_ready_cycle: %ld\nbarrier_ready: %ld, barrier_ready_cycles: %ld\nblk_com: %ld, blk_com_cycles: %ld\n",
-                   loops/1000000, blk_ready/1000000, blk_ready_cycles/1000000, manager_ready/1000000, manager_ready_cycles/1000000, blk_completion/1000000, blk_completion_cycles/1000000);
-
-            long sum = 0;
-            for (auto it = blk_processed.begin(); it != blk_processed.end(); it++) {
-                sum += *it;
-            }
-
-            double avg = (double)sum / blk_processed.size();
-
-            double var = 0;
-
-            for (auto it = blk_processed.begin(); it != blk_processed.end(); it++) {
-                var += pow((avg - *it), 2);
-            }
-            var /= blk_processed.size();
-
-            printf("mean: %f, var: %.6f\n", avg, var);
-
-            return nullptr;
-        }
+////                    printf("%d processed \n", processed);
+//                } while (ticks() - delay_start < delay && (new_arrivals || processed));
+//
+//                int64_t current_tick = ticks();
+//                bool timeout = false;
+//                int64_t cycles_to_wait = INT64_MAX;
+//                int64_t cycles_to_wait_for_write = INT64_MAX;
+//                int estimated_write = 0;
+//                const int64_t max_waiting_cycles = 100000;
+////                const int64_t max_waiting_cycles = 1000;
+//                delay_start = ticks();
+//                if ((timeout = ((current_tick - last_call_completion) > max_waiting_cycles))
+//                    || (cycles_to_wait_for_write = max((int64_t)0, estimator.estimate_the_time_to_get_desirable_ready_write_state(1, current_tick) - current_tick)) == 0
+//                    || (cycles_to_wait = max((int64_t) 0,
+//                                             estimator.estimate_the_time_to_get_desirable_ready_state(probe_granularity, current_tick) - current_tick)) == 0) {
+//                    start = ticks();
+//                    const int processed = tree->blk_accessor_->process_completion(probe_granularity);
+//                    if (timeout) {
+////                        printf("%d (e) vs %d (a) timeout (%f us)\n", probe_granularity, processed,
+////                               cycles_to_microseconds(current_tick - last_call_completion));
+////                        printf("pending: %d, pending_write: %d\n", estimator.get_number_of_pending_state(), estimator.get_number_of_pending_write_state());
+////                        printf("loops: %ld\n", loops - last_loop);
+//                        last_loop = loops;
+//                    } else if (cycles_to_wait_for_write == 0) {
+////                        printf("%d (e) vs %d (a) write\n", 1, processed);
+//                    } else {
+////                        printf("%d (e) vs %d (a) REAL\n", probe_granularity, processed);
+//                    }
+//                    last_call_completion = ticks();
+//                    blk_processed.push_back(processed);
+//                    blk_completion++;
+//                    blk_completion_cycles += ticks() - start;
+////                    printf("%d processed in blk_completion\n", processed);
+//                }
+////                else if (blk_ready_contexts.empty() && barrier_ready_contexts.empty() && tree->request_queue_.empty()) {
+////                else if (estimator.get_number_of_pending_state() > tree->queue_length_ / 3 * 2) {
+////                    usleep(10);
+////                    std::this_thread::sleep_for(std::chrono::nanoseconds((int)cycles_to_nanoseconds(cycles_to_wait)));
+////                }
+//
+//                delay = min(max_waiting_cycles, min(cycles_to_wait_for_write, cycles_to_wait));
+//
+////                printf("delay: %ld\n", delay);
+//
+////                int processed = 0;
+//                do {
+//                    processed = 0;
+//                    start = ticks();
+//                    processed += process_ready_contexts(blk_ready_contexts, probe_granularity);
+//                    blk_ready++;
+//                    blk_ready_cycles += ticks() - start;
+//
+//                    start = ticks();
+//                    processed += process_ready_contexts(barrier_ready_contexts, probe_granularity);
+//                    manager_ready++;
+//                    manager_ready_cycles += ticks() - start;
+////                    printf("%d processed \n", processed);
+//                } while (ticks() - delay_start < delay && processed > 0);
+//
+////                do {
+////                    start = ticks();
+////                    process_ready_contexts(barrier_ready_contexts, 8);
+////                    manager_ready++;
+////                    manager_ready_cycles += ticks() - start;
+////                } while (ticks() - delay_start < delay);
+//
+//            }
+//            tree->destroy_free_contexts();
+//
+//            printf("loops: %ld\nblk_ready: %ld, blk_ready_cycle: %ld\nbarrier_ready: %ld, barrier_ready_cycles: %ld\nblk_com: %ld, blk_com_cycles: %ld\n",
+//                   loops/1000000, blk_ready/1000000, blk_ready_cycles/1000000, manager_ready/1000000, manager_ready_cycles/1000000, blk_completion/1000000, blk_completion_cycles/1000000);
+//
+//            long sum = 0;
+//            for (auto it = blk_processed.begin(); it != blk_processed.end(); it++) {
+//                sum += *it;
+//            }
+//
+//            double avg = (double)sum / blk_processed.size();
+//
+//            double var = 0;
+//
+//            for (auto it = blk_processed.begin(); it != blk_processed.end(); it++) {
+//                var += pow((avg - *it), 2);
+//            }
+//            var /= blk_processed.size();
+//
+//            printf("mean: %f, var: %.6f\n", avg, var);
+//
+//            return nullptr;
+//        }
 
         static bool compare(call_back_context* l, call_back_context* r) {
             if (l->tag == r->tag)
