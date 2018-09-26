@@ -1,4 +1,4 @@
-//
+
 // Created by Li Wang on 11/4/17.
 //
 
@@ -21,7 +21,7 @@
 
 #include <list>
 #include <unordered_map>
-
+#include <string>
 
 
 using namespace std;
@@ -105,8 +105,8 @@ int main(int argc, char** argv) {
     int size = std::stoi(argv[2]);//512;
     int ntuples = std::stoi(argv[3]);//1000000;
     int nopertions = std::stoi(argv[4]);//1000000;
-    double write_rate = std::stoi(argv[5]);//0.1;
-    double key_skewness = std::stoi(argv[6]);//0;
+    double write_rate = std::stod(argv[5]);//0.1;
+    double key_skewness = std::stod(argv[6]);//0;
     int num_of_threads=std::stoi(argv[7]);
     int use_thread_pool=std::stoi(argv[8]);
 //    in_disk_b_plus_tree<int, int, order> in_disk_tree("tree.dat1", size);
