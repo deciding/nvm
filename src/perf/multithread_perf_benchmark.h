@@ -17,8 +17,7 @@
 #include "sequential_access.h"
 #include "random_access.h"
 #include "common.h"
-#include "ThreadPool.h"
-#define THREAD_POOL true
+
 using namespace std;
 namespace nvm {
 
@@ -31,7 +30,7 @@ namespace nvm {
         const uint64_t number_of_sectors = nvm_utility::get_sector_number();
         const uint64_t sectors_per_thread = number_of_sectors / number_of_threads;
         QPair *qpairs[number_of_threads];
-        //std::thread threads[number_of_threads];
+        std::thread threads[number_of_threads];
         access_pattern *patterns[number_of_threads];
 
         for (int i = 0; i < number_of_threads; i++) {
@@ -41,18 +40,16 @@ namespace nvm {
             else
                 patterns[i] = new random_access(sectors_per_thread * i, sectors_per_thread * (i + 1));
         }
-	
-	ThreadPool* pool=new ThreadPool(number_of_threads);
 
         uint64_t start = ticks();
         for (int i = 0; i < number_of_threads; i++) {
-            pool->enqueue(run_task, number_of_accesses / number_of_threads, bytes_per_access, load, patterns[i], mode, qpairs[i]);
-//            threads[i] = std::thread(run_task, number_of_accesses / number_of_threads, bytes_per_access, load, patterns[i], mode, qpairs[i]);
+            threads[i] = std::thread(run_task, number_of_accesses / number_of_threads, bytes_per_access, load, patterns[i], mode,
+                                     qpairs[i]);
         }
 
-//        for (int i = 0; i < number_of_threads; i++) {
-//            threads[i].join();
-//        }
+        for (int i = 0; i < number_of_threads; i++) {
+            threads[i].join();
+        }
         uint64_t cycles = ticks() - start;
 
         for (int i = 0; i < number_of_threads; i++) {

@@ -16,6 +16,7 @@
 #include "insert.h"
 #include "update.h"
 #include "operation.h"
+#include "ThreadPool.h"
 
 using namespace std;
 template <typename K, typename V>
@@ -194,8 +195,7 @@ void benchmark_mixed_workload(BTree<K, V> *tree, const string name, const int ru
 }
 
 template <typename K, typename V>
-void multithread_benchmark_mixed_workload(BTree<K, V> *tree, const string name, const int runs, const int ntuples, const int noperations,
-                              const double write_rate, double skewness, int threads) {
+void multithread_benchmark_mixed_workload(BTree<K, V> *tree, const string name, const int runs, const int ntuples, const int noperations, const double write_rate, double skewness, int threads, int use_thread_pool) {
     uint64_t total_start = ticks();
     double build_time = 0, search_time = 0, update_time = 0;
     int run = runs;
@@ -291,14 +291,22 @@ void multithread_benchmark_mixed_workload(BTree<K, V> *tree, const string name, 
         tree->reset_metrics();
 
         int ops_per_thread = noperations / threads;
+	ThreadPool* pool;
+	if(use_thread_pool){
+		pool=new ThreadPool(number_of_threads);
+	}
         for (int i = 0; i < threads; i++) {
-            tid[i] = std::thread(&execute_operations<K, V>, tree, operations.begin() + i * ops_per_thread,
-            i == threads - 1 ? operations.end() : operations.begin() + (1 + i) * ops_per_thread);
+	    if(use_thread_pool){
+		    pool->enqueue(&execute_operations<K, V>, tree, operations.begin() + i * ops_per_thread,i == threads - 1 ? operations.end() : operations.begin() + (1 + i) * ops_per_thread);
+		    continue;
+	    }
+            tid[i] = std::thread(&execute_operations<K, V>, tree, operations.begin() + i * ops_per_thread,i == threads - 1 ? operations.end() : operations.begin() + (1 + i) * ops_per_thread);
         }
 
-        for (int i = 0; i < threads; i++) {
-            tid[i].join();
-        }
+	if(use_thread_pool)
+        	for (int i = 0; i < threads; i++) {
+        	    tid[i].join();
+        	}
         tree->sync();
         printf("CPU usage: %f\n", monitor.get_value());
         if(accessor) {

@@ -26,8 +26,15 @@
 
 using namespace std;
 using namespace tree;
-int main(int argc, char** argv) {
 
+static void show_usage(std::string name){
+    std::cerr << "Usage: " << argv[0] << "order size ntuples noperations write_rate key_skewness num_of_threads use_thread_pool "<< std::endl;
+}
+
+int main(int argc, char** argv) {
+	if(argc<9){
+		show_usage();
+	}
 
 //
 //    int writes = 100;
@@ -94,13 +101,14 @@ int main(int argc, char** argv) {
 
 //
 
-    const int order = 32;
-    const int size = 512;
-    const int ntuples = 1000000;
-    const int nopertions = 1000000;
-    const double write_rate = 0.1;
-    const double key_skewness = 0;
-
+    int order = std::stoi(argv[1]);//32
+    int size = std::stoi(argv[2]);//512;
+    int ntuples = std::stoi(argv[3]);//1000000;
+    int nopertions = std::stoi(argv[4]);//1000000;
+    double write_rate = std::stoi(argv[5]);//0.1;
+    double key_skewness = std::stoi(argv[6]);//0;
+    int num_of_threads=std::stoi(argv[7]);
+    int use_thread_pool=std::stoi(argv[8]);
 //    in_disk_b_plus_tree<int, int, order> in_disk_tree("tree.dat1", size);
 //    in_disk_tree.init();
 //    benchmark<int, int>(&in_disk_tree, "in-disk", 1, ntuples, ntuples, ntuples, 1);
@@ -236,9 +244,11 @@ int main(int argc, char** argv) {
 //    }
 
 ////
+    int queue_len=64;
+    int runs=1;
     nvme_optimized_tree_for_benchmark<int, int, order> concurrent_nvme_optimized(size, 64);
     concurrent_nvme_optimized.init();
-    multithread_benchmark_mixed_workload(&concurrent_nvme_optimized, "concurrent_nvme_optimized", 1, ntuples, nopertions, write_rate, key_skewness, 1);
+    multithread_benchmark_mixed_workload(&concurrent_nvme_optimized, "concurrent_nvme_optimized", runs, ntuples, nopertions, write_rate, key_skewness, num_of_threads, use_thread_pool);
 //    multithread_benchmark_mixed_workload(&concurrent_nvme_optimized, "concurrent_nvme_optimized", 1, ntuples, nopertions, write_rate, key_skewness, 2);
 //    multithread_benchmark_mixed_workload(&concurrent_nvme_optimized, "concurrent_nvme_optimized", 1, ntuples, nopertions, write_rate, key_skewness, 3);
 //    multithread_benchmark_mixed_workload(&concurrent_nvme_optimized, "concurrent_nvme_optimized", 1, ntuples, nopertions, write_rate, key_skewness, 4);
