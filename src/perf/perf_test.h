@@ -293,7 +293,7 @@ void multithread_benchmark_mixed_workload(BTree<K, V> *tree, const string name, 
         int ops_per_thread = noperations / threads;
 	ThreadPool* pool;
 	if(use_thread_pool){
-		pool=new ThreadPool(number_of_threads);
+		pool=new ThreadPool(threads);
 	}
         for (int i = 0; i < threads; i++) {
 	    if(use_thread_pool){
@@ -303,10 +303,12 @@ void multithread_benchmark_mixed_workload(BTree<K, V> *tree, const string name, 
             tid[i] = std::thread(&execute_operations<K, V>, tree, operations.begin() + i * ops_per_thread,i == threads - 1 ? operations.end() : operations.begin() + (1 + i) * ops_per_thread);
         }
 
-	if(use_thread_pool)
+	if(!use_thread_pool)
         	for (int i = 0; i < threads; i++) {
         	    tid[i].join();
         	}
+	else
+		delete pool;
         tree->sync();
         printf("CPU usage: %f\n", monitor.get_value());
         if(accessor) {
