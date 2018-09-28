@@ -300,6 +300,7 @@ void multithread_benchmark_mixed_workload(BTree<K, V> *tree, const string name, 
 		    pool->enqueue(&execute_operations<K, V>, tree, operations.begin() + i * ops_per_thread,i == threads - 1 ? operations.end() : operations.begin() + (1 + i) * ops_per_thread);
 		    continue;
 	    }
+	    else
             tid[i] = std::thread(&execute_operations<K, V>, tree, operations.begin() + i * ops_per_thread,i == threads - 1 ? operations.end() : operations.begin() + (1 + i) * ops_per_thread);
         }
 
