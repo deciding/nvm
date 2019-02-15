@@ -1,0 +1,103 @@
+//
+// Created by robert on 9/11/17.
+//
+
+#ifndef NVM_FILE_AIO_B_PLUS_TREE_H
+#define NVM_FILE_AIO_B_PLUS_TREE_H
+
+#include <queue>
+#include <thread>
+#include <pthread.h>
+#include "../utils/dummy.h"
+//#include "in_nvme_b_plus_tree.h"
+#include "vanilla_b_plus_tree.h"
+#include "../utils/sync.h"
+#include "../context/call_back.h"
+#include "../tree/blk_node_reference.h"
+#include "../blk/file_aio_blk_accessor.h"
+#include "pull_based_b_plus_tree.h"
+#include "../utils/cpu_set.h"
+//#include <spdk/nvme.h>
+
+using namespace std;
+
+
+namespace tree {
+
+    template<typename K, typename V, int CAPACITY>
+    class file_aio_b_plus_tree : public pull_based_b_plus_tree<K, V, CAPACITY> {
+    public:
+        file_aio_b_plus_tree(const int block_size, int queue_length):
+                pull_based_b_plus_tree<K, V, CAPACITY>(queue_length), block_size_(block_size) {
+        }
+
+        void create_and_init_blk_accessor() {
+            this->blk_accessor_ = new file_aio_blk_accessor<K, V, CAPACITY>("./b_tree_aio.dat", block_size_);
+            this->blk_accessor_->open();
+            spdk_unaffinitize_thread();
+            print_current_cpu_set();
+            set_cpu_set(32);
+            print_current_cpu_set();
+        }
+
+
+        virtual bool search(const K &key, V &value) override {
+            search_request<K,V> request;
+            request.ownership = false;
+            SpinLock semaphore;
+            semaphore.acquire();
+            bool found = true;
+            request.key = key;
+            request.value = &value;
+            request.found = &found;
+            request.semaphore = &semaphore;
+            request.cb_f = nullptr;
+            request.args = 0;
+            request.start = ticks();
+            this->asynchronous_search_with_callback(&request);
+            while(!semaphore.try_lock()) {
+                usleep(1);
+            }
+            assert(!found || key == value);
+//            printf("Insert: before admission: %.2f us, process: %.2f us, after graduation: %.2f us, total: %.2f\n",
+//                   cycles_to_microseconds(request.admission - request.start),
+//                   cycles_to_microseconds(request.graduation - request.admission),
+//                   cycles_to_microseconds(ticks() - request.graduation),
+//                   cycles_to_microseconds(ticks() - request.start));
+            this->metrics_.add_read_latency(ticks() - request.start);
+            return found;
+        }
+
+        virtual void insert(const K &key, const V &value) override {
+            insert_request<K,V> request;
+            request.ownership = false;
+            SpinLock semaphore;
+            semaphore.acquire();
+            request.key = key;
+            request.value = value;
+            request.semaphore = &semaphore;
+            request.cb_f = nullptr;
+            request.args = 0;
+            request.start = ticks();
+            this->asynchronous_insert_with_callback(&request);
+            while(!semaphore.try_lock()) {
+                usleep(1);
+            }
+//            printf("Insert: before admission: %.2f us, process: %.2f us, after graduation: %.2f us, total: %.2f\n",
+//                   cycles_to_microseconds(request.admission - request.start),
+//                   cycles_to_microseconds(request.graduation - request.admission),
+//                   cycles_to_microseconds(ticks() - request.graduation),
+//                   cycles_to_microseconds(ticks() - request.start));
+            this->metrics_.add_write_latency(ticks() - request.start);
+        }
+
+        virtual int height() {
+            return this->get_height();
+        };
+
+    private:
+        int block_size_;
+    };
+}
+
+#endif //NVM_NVME_OPTIMIZED_B_PLUS_TREE_H

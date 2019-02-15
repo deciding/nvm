@@ -68,7 +68,7 @@ target_link_libraries(main -lpthread
 		${CMAKE_CURRENT_BINARY_DIR}/boost/lib/libboost_thread.a
 	${spdk/lib/libspdk.a}	${spdk/lib/librte.a}
 	-L${CMAKE_SOURCE_DIR}/spdk/lib
-  -lspdk -lrte -pthread -lnuma -ldl -luuid -lrt
+  -lspdk -lrte -pthread -lnuma -ldl -luuid -lrt -laio
 		)
 add_dependencies(main Boost)
 
@@ -101,32 +101,32 @@ target_link_libraries(tree_benchmark
 		${spdk/lib/libspdk.a}
 		${spdk/lib/librte.a}
 		-L${CMAKE_SOURCE_DIR}/spdk/lib
-		-lspdk -lrte -lpthread -lnuma -ldl -luuid -lrt
+		-lspdk -lrte -lpthread -lnuma -ldl -luuid -lrt -laio
 		)
 add_dependencies(tree_benchmark Boost)
 
 
-set(TEST_FILES
-		test/test.cc test/tree/leaf_node_test.cc test/tree/inner_node_test.cc test/tree/b_plus_tree_test.cc test/blk_test.cc
-		test/tree/disk_based_b_plus_tree_test.cc test/lru_cache_test.cc
-		test/utils/rwlock_test.cc
-		test/sync/lock_manager_test.cc
-		test/tree/concurrent_tree_test.cc
-		test/tree/concurrent_disk_optimized_tree_test.cc
-		test/scheduler/ready_state_estimater_test.cc)
-
-add_executable(unittest ${TEST_FILES})
-target_link_libraries(unittest
-		${CMAKE_CURRENT_BINARY_DIR}/boost/lib/libboost_system.a
-		${CMAKE_CURRENT_BINARY_DIR}/boost/lib/libboost_thread.a
-		-lpthread
-		libgtest
-		${spdk/lib/libspdk.a}
-		${spdk/lib/librte.a}
-		-L${CMAKE_SOURCE_DIR}/spdk/lib
-		-lspdk -lrte -lpthread -lnuma -ldl -luuid -lrt
-)
-add_dependencies(unittest Boost)
+#set(TEST_FILES
+#		test/test.cc test/tree/leaf_node_test.cc test/tree/inner_node_test.cc test/tree/b_plus_tree_test.cc test/blk_test.cc
+#		test/tree/disk_based_b_plus_tree_test.cc test/lru_cache_test.cc
+#		test/utils/rwlock_test.cc
+#		test/sync/lock_manager_test.cc
+#		test/tree/concurrent_tree_test.cc
+#		test/tree/concurrent_disk_optimized_tree_test.cc
+#		test/scheduler/ready_state_estimater_test.cc)
+#
+#add_executable(unittest ${TEST_FILES})
+#target_link_libraries(unittest
+#		${CMAKE_CURRENT_BINARY_DIR}/boost/lib/libboost_system.a
+#		${CMAKE_CURRENT_BINARY_DIR}/boost/lib/libboost_thread.a
+#		-lpthread
+#		libgtest
+#		${spdk/lib/libspdk.a}
+#		${spdk/lib/librte.a}
+#		-L${CMAKE_SOURCE_DIR}/spdk/lib
+#		-lspdk -lrte -lpthread -lnuma -ldl -luuid -lrt -laio
+#)
+#add_dependencies(unittest Boost)
 
 
 

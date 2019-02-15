@@ -10,6 +10,7 @@
 #include "tree/in_disk_b_plus_tree.h"
 #include "tree/in_nvme_b_plus_tree.h"
 #include "tree/nvme_optimized_b_plus_tree.h"
+#include "tree/file_aio_b_plus_tree.h"
 #include "tree/nvme_optimized_tree_for_benchmark.h"
 #include "tree/disk_optimized_tree_for_benchmark.h"
 #include "tree/concurrent_in_disk_b_plus_tree.h"
@@ -251,7 +252,8 @@ int main(int argc, char** argv) {
     switch(tree_type){
 	case concurrent_nvme_optimized:{
     		int queue_len=64;
-    		nvme_optimized_b_plus_tree<int, int, order> concurrent_nvme_optimized(size, queue_len);
+    		//nvme_optimized_b_plus_tree<int, int, order> concurrent_nvme_optimized(size, queue_len);
+    		file_aio_b_plus_tree<int, int, order> concurrent_nvme_optimized(size, queue_len);
     		concurrent_nvme_optimized.init();
     		multithread_benchmark_mixed_workload(&concurrent_nvme_optimized, "concurrent_nvme_optimized", runs, ntuples, nopertions, write_rate, key_skewness, num_of_threads, use_thread_pool);
 //    multithread_benchmark_mixed_workload(&concurrent_nvme_optimized, "concurrent_nvme_optimized", 1, ntuples, nopertions, write_rate, key_skewness, 2);
@@ -272,17 +274,17 @@ int main(int argc, char** argv) {
 		break;
 	}
 	case concurrent_nvme_shared_io:{
-    		concurrent_in_nvme_b_plus_tree<int, int, order> concurrent_shared_io_thread_in_nvme_tree(SHARED_IO_THREAD);
-    		concurrent_shared_io_thread_in_nvme_tree.init();
-    		multithread_benchmark_mixed_workload(&concurrent_shared_io_thread_in_nvme_tree, "concurrent-shared-io-thread-in-nvme-tree", runs, ntuples, nopertions, write_rate, key_skewness, num_of_threads, use_thread_pool);
-    		concurrent_shared_io_thread_in_nvme_tree.close();
-		break;    
+    		//concurrent_in_nvme_b_plus_tree<int, int, order> concurrent_shared_io_thread_in_nvme_tree(SHARED_IO_THREAD);
+    		//concurrent_shared_io_thread_in_nvme_tree.init();
+    		//multithread_benchmark_mixed_workload(&concurrent_shared_io_thread_in_nvme_tree, "concurrent-shared-io-thread-in-nvme-tree", runs, ntuples, nopertions, write_rate, key_skewness, num_of_threads, use_thread_pool);
+    		//concurrent_shared_io_thread_in_nvme_tree.close();
+		//break;    
 	}
 	default:{
-		concurrent_in_nvme_b_plus_tree<int, int, order> concurrent_in_nvme_tree;
-		concurrent_in_nvme_tree.init();
-		multithread_benchmark_mixed_workload(&concurrent_in_nvme_tree, "concurrent-in-nvme-tree", runs, ntuples, nopertions, write_rate, key_skewness, num_of_threads,use_thread_pool);
-		concurrent_in_nvme_tree.close();
+		//concurrent_in_nvme_b_plus_tree<int, int, order> concurrent_in_nvme_tree;
+		//concurrent_in_nvme_tree.init();
+		//multithread_benchmark_mixed_workload(&concurrent_in_nvme_tree, "concurrent-in-nvme-tree", runs, ntuples, nopertions, write_rate, key_skewness, num_of_threads,use_thread_pool);
+		//concurrent_in_nvme_tree.close();
 	}
     }
 }
