@@ -35,6 +35,7 @@ using namespace nvm;
 
 #define NVM_READ 0
 #define NVM_WRITE 1
+#define NVM_WRITE_EVICTED 2
 
 template<typename K, typename V, int CAPACITY>
 class nvme_blk_accessor: public blk_accessor<K, V> {
@@ -104,6 +105,7 @@ public:
         }
     }
     virtual int read(const blk_address & blk_addr, void* buffer) {
+        printf("read function in nvme_blk_accessor is called\n");
         uint64_t start = ticks();
         spin_lock_.acquire();
 //        if (cache_ && cache_->read(blk_addr, buffer)) {
@@ -123,6 +125,7 @@ public:
         this->metrics_.reads_++;
     }
     virtual int write(const blk_address & blk_addr, void* buffer) {
+        printf("write function in nvme_blk_accessor is called\n");
         uint64_t start = ticks();
         spin_lock_.acquire();
 //        if (cache_) {
@@ -151,10 +154,16 @@ public:
     void flush() {
     }
 
+    virtual atomic<int>* get_pending_requests_(){
+        return nullptr;
+    }
+
     virtual void asynch_read(const blk_address& blk_addr, void* buffer, call_back_context* context) {
         int64_t start = ticks();
         uint64_t io_id = io_id_generator_++;
         if (cache_ && cache_->read(blk_addr, buffer)) {
+            if(this->get_pending_requests_())
+                this->get_pending_requests_()->fetch_sub(1);
 //            printf("read hit on [%d]\n", blk_addr);
 //            printf("%s\n", cache_->keys_to_string().c_str());
             // we read the data from in-memory cache, so asynchronous io will be omitted.
@@ -203,7 +212,7 @@ public:
         return ready_contexts_;
     }
 
-    int process_completion(int max = 0) {
+    virtual int process_completion(int max = 0) {
         int processed =  process_completion(qpair_, max);
         this->metrics_.pending_commands_ -= processed;
         this->metrics_.pending_command_counts_.push_back(this->metrics_.pending_commands_);
@@ -230,6 +239,8 @@ public:
             if (strong_consistent) {
                 cache_->invalidate(blk_addr);
             } else {
+                if(this->get_pending_requests_())
+                    this->get_pending_requests_()->fetch_sub(1);
                 blk_cache::cache_unit unit;
                 bool evicted = cache_->write(blk_addr, buffer, true, unit);
                 assert(!evicted);
@@ -257,7 +268,7 @@ public:
         uint64_t io_id = io_id_generator_++;
         nvme_callback_para* para = new nvme_callback_para;
         para->start_time = start;
-        para->type = NVM_WRITE;
+        para->type = NVM_WRITE_EVICTED;
         para->context = context;
         para->id = blk_addr;
         para->accessor = this;
@@ -284,6 +295,8 @@ public:
 
     static void context_call_back_function(void* parms, const struct spdk_nvme_cpl *) {
         nvme_callback_para* para = reinterpret_cast<nvme_callback_para*>(parms);
+        if(para->type != NVM_WRITE_EVICTED && para->accessor && para->accessor->get_pending_requests_())
+            para->accessor->get_pending_requests_()->fetch_sub(1);
 
 
         if (para->type == NVM_READ) {

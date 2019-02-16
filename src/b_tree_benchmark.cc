@@ -11,6 +11,7 @@
 #include "tree/in_nvme_b_plus_tree.h"
 #include "tree/nvme_optimized_b_plus_tree.h"
 #include "tree/file_aio_b_plus_tree.h"
+#include "tree/io_thread_b_plus_tree.h"
 #include "tree/nvme_optimized_tree_for_benchmark.h"
 #include "tree/disk_optimized_tree_for_benchmark.h"
 #include "tree/concurrent_in_disk_b_plus_tree.h"
@@ -32,7 +33,7 @@ static void show_usage(std::string name){
     std::cerr << "Usage: " << name << "size ntuples noperations write_rate key_skewness num_of_threads use_thread_pool tree_type"<< std::endl;
 }
 
-enum TreeType {concurrent_nvme_optimized, concurrent_nvme_shared_io, concurrent_nvme};
+enum TreeType {concurrent_nvme_optimized, concurrent_io_thread, concurrent_file_aio, concurrent_nvme_shared_io, concurrent_nvme};
 
 int main(int argc, char** argv) {
 	if(argc<9){
@@ -252,8 +253,7 @@ int main(int argc, char** argv) {
     switch(tree_type){
 	case concurrent_nvme_optimized:{
     		int queue_len=64;
-    		//nvme_optimized_b_plus_tree<int, int, order> concurrent_nvme_optimized(size, queue_len);
-    		file_aio_b_plus_tree<int, int, order> concurrent_nvme_optimized(size, queue_len);
+    		nvme_optimized_b_plus_tree<int, int, order> concurrent_nvme_optimized(size, queue_len);
     		concurrent_nvme_optimized.init();
     		multithread_benchmark_mixed_workload(&concurrent_nvme_optimized, "concurrent_nvme_optimized", runs, ntuples, nopertions, write_rate, key_skewness, num_of_threads, use_thread_pool);
 //    multithread_benchmark_mixed_workload(&concurrent_nvme_optimized, "concurrent_nvme_optimized", 1, ntuples, nopertions, write_rate, key_skewness, 2);
@@ -271,6 +271,22 @@ int main(int argc, char** argv) {
 //    multithread_benchmark_mixed_workload(&concurrent_nvme_optimized, "concurrent_nvme_optimized", 1, ntuples, nopertions, 0, key_skewness, 8);
 //    printf("tree depth: %d\n", concurrent_nvme_optimized.get_height());
     		concurrent_nvme_optimized.close();
+		break;
+	}
+	case concurrent_io_thread:{
+    		int queue_len=64;
+    		io_thread_b_plus_tree<int, int, order> concurrent_io_thread(size, queue_len);
+    		concurrent_io_thread.init();
+    		multithread_benchmark_mixed_workload(&concurrent_io_thread, "concurrent_io_thread", runs, ntuples, nopertions, write_rate, key_skewness, num_of_threads, use_thread_pool);
+    		concurrent_io_thread.close();
+		break;
+	}
+	case concurrent_file_aio:{
+    		int queue_len=64;
+    		file_aio_b_plus_tree<int, int, order> concurrent_file_aio(size, queue_len);
+    		concurrent_file_aio.init();
+    		multithread_benchmark_mixed_workload(&concurrent_file_aio, "concurrent_file_aio", runs, ntuples, nopertions, write_rate, key_skewness, num_of_threads, use_thread_pool);
+    		concurrent_file_aio.close();
 		break;
 	}
 	case concurrent_nvme_shared_io:{
